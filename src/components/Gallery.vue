@@ -17,14 +17,13 @@
 </template>
 
 <script>
-const { remote, shell } = require('electron')
+const { remote } = require('electron')
 const fs = require('fs')
 
 export default {
   name: 'Gallery', 
   data: () => ({
-    videos: [], 
-    thumbnails: []
+    videos: []
   }),
   methods: {
     getVideoFiles() {
@@ -38,11 +37,10 @@ export default {
       });
     }, 
     openFolder() {
-      shell.openItem(remote.app.getPath('userData') + '/videos');
+      
     }
   }, 
   mounted() {
-
     this.$root.$on('savedVideo', () => {
       this.getVideoFiles();
     })
