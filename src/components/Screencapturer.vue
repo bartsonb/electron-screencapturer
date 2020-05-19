@@ -28,6 +28,9 @@
 </template>
 
 <script>
+const { desktopCapturer, remote, shell, ipcRenderer } = require('electron');
+const fs = require('fs');
+const { Menu } = remote;
 
 export default {
   name: 'Screencapturer', 
@@ -40,25 +43,101 @@ export default {
     }
   },
   mounted() {
+    ipcRenderer.on('shortcutPressed', (e, shortcut) => {
+      switch(shortcut) {
+        case 'Shift+j': 
+          this.startRecording();
+          break;
+        case 'Shift+k':
+          this.stopRecording();
+          break;
+        case 'Shift+l':
+          this.getVideoSources();
+          break;
+      }
+    })
   },
   methods: {
     getVideoSources() {
 
+      desktopCapturer.getSources({ types: ['window', 'screen'] })
+        .then(sources => {
+
+          Menu.buildFromTemplate(
+            sources.map(source => ({
+              label: source.name,
+              click: () => {
+                this.source = source;
+                this.setVideoStream();
+              }
+            }))
+          ).popup();
+
+        })
+        .catch(err => {
+          console.log(err);
+        });
+
     }, 
     setVideoStream() {
+      const contraints = {
+        audio: false,
+        video: {
+          mandatory:  {
+            chromeMediaSource: 'desktop', 
+            chromeMediaSourceId: this.source.id
+          }
+        }
+      }
 
+      navigator.mediaDevices.getUserMedia(contraints)
+        .then(mediaStream => {
+          this.$refs.videoElement.srcObject = mediaStream;
+          this.$refs.videoElement.play();
+
+          this.mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm; codecs=vp9' });
+
+          this.mediaRecorder.ondataavailable = this.handleDataAvailable;
+          this.mediaRecorder.onstop = this.handleDataStop;
+        })
     }, 
     startRecording() {
-
+      this.mediaRecorder.start();
+      this.recording = true;
     }, 
     stopRecording() {
+      this.mediaRecorder.stop();
+      this.recording = false;
 
+      this.recordedChunks = [];
     },
-    handleDataAvailable() {
-
+    handleDataAvailable(e) {
+      this.recordedChunks.push(e.data);
     }, 
     async handleDataStop() {
+      const blob = new Blob(this.recordedChunks, {
+        type: 'video/webm; codecs=vp9'
+      });
 
+      const buffer = Buffer.from(await blob.arrayBuffer())
+      const userData = remote.app.getPath('userData');
+      const filePath = `${userData}/videos`;
+
+      fs.mkdir(filePath, () => {
+        fs.writeFile(`${filePath}/vid-${Date.now()}.webm`, buffer, () => {
+          console.log('Wrote to file.')
+
+          const notifcation = new Notification('Screencapturer', {
+            body: `File saved to: ${userData}/videos/vid-${Date.now()}.webm`
+          })
+
+          notifcation.onclick = () => {
+            shell.openItem(remote.app.getPath('userData') + '/videos');
+          }
+
+          this.$root.$emit('savedVideo');
+        });
+      });
     }
   }
 }

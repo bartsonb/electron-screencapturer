@@ -1,6 +1,6 @@
 'use strict'
 
-import { app, protocol, BrowserWindow } from 'electron'
+import { app, protocol, BrowserWindow, Tray, Menu, globalShortcut, ipcMain } from 'electron'
 import {
   createProtocol,
   /* installVueDevtools */
@@ -9,26 +9,63 @@ const isDevelopment = process.env.NODE_ENV !== 'production'
 
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
-let win
+let win, splashscreen, tray
+
+const shortcuts = ['Shift+j', 'Shift+k', 'Shift+l'];
 
 // Scheme must be registered before the app is ready
 protocol.registerSchemesAsPrivileged([{scheme: 'app', privileges: { secure: true, standard: true } }])
 
+const createTray = () => {
+  tray = new Tray('public/icon@2x.png');
+  tray.setToolTip('Screencapture');
+
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Quit', click: app.quit }
+  ]))
+
+  tray.on('click', () => {
+    if (win.isVisible()) {
+      win.hide();
+    } else {
+      win.show();
+    }
+  })
+}
+
 function createWindow () {
+
+  createTray();
 
   // Create the browser window.
   win = new BrowserWindow({
-    width: 1200,
+    title: 'Screencapturer', 
+    width: 800,
     height: 800,
+    show: false,
+    icon: 'public/icon@2x.png',
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true
     } 
   })
 
+  splashscreen = new BrowserWindow({ 
+    width: 600,
+    height: 300,
+    autoHideMenuBar: true,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true
+    } 
+  })
+
+  splashscreen.loadFile('../public/splashscreen.html');
+
   if (process.env.WEBPACK_DEV_SERVER_URL) {
     // Load the url of the dev server if in development mode
     win.loadURL(process.env.WEBPACK_DEV_SERVER_URL)
-    if (!process.env.IS_TEST) win.webContents.openDevTools()
+    // if (!process.env.IS_TEST) win.webContents.openDevTools()
   } else {
     createProtocol('app')
     // Load the index.html when not in development
@@ -38,6 +75,21 @@ function createWindow () {
   win.on('closed', () => {
     win = null
   })
+
+  win.webContents.on('did-finish-load', e => {
+
+    win.show();
+    splashscreen.hide();
+
+    shortcuts.forEach(shortcut => {
+      globalShortcut.register(shortcut, () => {
+       
+        win.webContents.send('shortcutPressed', shortcut)
+  
+      })
+    })
+
+  });
 }
 
 // Quit when all windows are closed.
